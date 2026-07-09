@@ -1,7 +1,7 @@
 github.com/PuerkitoBio/goquery v1.10.3 h1:pFYcNSqHxBD06Fpj/KsbStFRsgRATgnf3LeXiUkhzPo=
 github.com/PuerkitoBio/goquery v1.10.3/go.mod h1:tMUX0zDMHXYlAQk6p35XxQMqMweEKB7iK7iLNd4RH4Y=
-github.com/Silo-Server/silo-plugin-sdk v0.4.0 h1:DJkRROQfr/kfwnF5dUdkhmbCso1KDLZc7uK7YfJnaO0=
-github.com/Silo-Server/silo-plugin-sdk v0.4.0/go.mod h1:etqmxLTwjxpFH9goAjBDfNDoqHMv2/sqUXu8yx3hNfA=
+github.com/Silo-Server/silo-plugin-sdk v0.10.0 h1:OU2PfQwnUQAnf8FEZSTfWI+3x0OBiVfjKHHaVWhD/E0=
+github.com/Silo-Server/silo-plugin-sdk v0.10.0/go.mod h1:etqmxLTwjxpFH9goAjBDfNDoqHMv2/sqUXu8yx3hNfA=
 github.com/andybalholm/cascadia v1.3.3 h1:AG2YHrzJIm4BZ19iwJ/DAua6Btl3IwJX+VI4kktS1LM=
 github.com/andybalholm/cascadia v1.3.3/go.mod h1:xNd9bqTn98Ln4DwST8/nG+H0yuB8Hmgu1YHNnWw0GeA=
 github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/FBatYVw=
