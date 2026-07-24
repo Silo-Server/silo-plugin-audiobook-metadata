@@ -157,10 +157,38 @@ func (c *ITunesClient) Search(ctx context.Context, q metadata.SearchQuery) ([]me
 	return results, nil
 }
 
-// Fetch is not directly supported by the iTunes API (no single-item lookup
-// by collectionId in the public search API). Returns nil without error.
-func (c *ITunesClient) Fetch(_ context.Context, _ string) (*metadata.Match, error) {
-	return nil, nil
+// Fetch returns full metadata for an iTunes collectionId using the public
+// lookup endpoint. The host's enrichment sweep calls this with the ID that
+// Search accumulated, so a stub here throws away every match iTunes found.
+func (c *ITunesClient) Fetch(ctx context.Context, id string) (*metadata.Match, error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, nil
+	}
+
+	if err := waitForLimiter(ctx, c.limiter); err != nil {
+		return nil, err
+	}
+
+	params := url.Values{}
+	params.Set("id", id)
+	params.Set("entity", "audiobook")
+
+	body, err := c.get(ctx, c.baseURL+"/lookup?"+params.Encode())
+	if err != nil || body == nil {
+		return nil, err
+	}
+
+	var resp iTunesSearchResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("itunes: decode lookup response: %w", err)
+	}
+	if len(resp.Results) == 0 {
+		return nil, nil
+	}
+
+	m := c.matchFromResult(resp.Results[0])
+	return &m, nil
 }
 
 func (c *ITunesClient) get(ctx context.Context, reqURL string) ([]byte, error) {
