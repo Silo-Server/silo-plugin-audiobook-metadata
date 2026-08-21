@@ -161,7 +161,7 @@ func NewAudnexusClient() *AudnexusClient {
 // Search returns a Match when q.ProviderIDs["asin"] is set.
 // Audnexus provides no general title search endpoint.
 func (c *AudnexusClient) Search(ctx context.Context, q metadata.SearchQuery) ([]metadata.Match, error) {
-	// Title-based search: use /books?q= endpoint (returns array of books).
+	// ASIN lookup is the only thing this API supports.
 	if asin := q.ProviderIDs["asin"]; asin != "" {
 		m, err := c.Fetch(ctx, asin)
 		if err != nil || m == nil {
@@ -170,43 +170,20 @@ func (c *AudnexusClient) Search(ctx context.Context, q metadata.SearchQuery) ([]
 		return []metadata.Match{*m}, nil
 	}
 
-	// Fall back to title search if a title is provided.
-	if q.Title == "" {
-		return nil, nil
-	}
-
-	if err := waitForLimiter(ctx, c.limiter); err != nil {
-		return nil, err
-	}
-
-	params := url.Values{}
-	params.Set("q", q.Title)
-	params.Set("region", "us")
-	reqURL := c.baseURL + "/books?" + params.Encode()
-
-	body, err := c.get(ctx, reqURL)
-	if err != nil {
-		return nil, err
-	}
-
-	// Response is an array of books.
-	var books []audnexusBook
-	if err := json.Unmarshal(body, &books); err != nil {
-		// Some versions wrap in {"books": [...]}
-		var wrapper struct {
-			Books []audnexusBook `json:"books"`
-		}
-		if err2 := json.Unmarshal(body, &wrapper); err2 != nil {
-			return nil, fmt.Errorf("audnexus: decode search response: %w", err)
-		}
-		books = wrapper.Books
-	}
-
-	results := make([]metadata.Match, 0, len(books))
-	for _, b := range books {
-		results = append(results, bookFromAudnexus(b))
-	}
-	return results, nil
+	// Audnexus is an ASIN-LOOKUP service; it has no title search. The code below
+	// used to call GET /books?q=<title>, which the API answers with
+	//   {"message":"Route GET:/books?q=... not found","statusCode":404}
+	// Verified 2026-08-21: /books?q= and /books?title= both 404, while
+	// /books/{asin} returns 200. So this was never a working search -- every
+	// title-only query produced a 404 body that failed to decode, surfacing as
+	// "audnexus: decode search response: unexpected end of JSON input" (425
+	// occurrences in a 30-minute window).
+	//
+	// Declining is the honest answer: no ASIN means this provider cannot help,
+	// which is NOT an error. Returning an error here would make a title-only
+	// query look like a provider outage to the caller, which now matters --
+	// Search() reports failure only when every provider errors.
+	return nil, nil
 }
 
 // Fetch returns full metadata for the given ASIN.

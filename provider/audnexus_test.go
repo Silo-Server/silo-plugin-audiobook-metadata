@@ -100,33 +100,37 @@ func TestAudnexusSearchByASIN(t *testing.T) {
 	}
 }
 
-func TestAudnexusTitleSearch(t *testing.T) {
-	// The title search endpoint returns an array of books.
-	fixture, err := os.ReadFile("testdata/audnexus_book.json")
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	arrayFixture := "[" + string(fixture) + "]"
-
+func TestAudnexusTitleOnlyQueryIsDeclined(t *testing.T) {
+	// Audnexus has NO title-search endpoint: GET /books?q= and /books?title=
+	// both return 404 "Route not found" (verified against the live API
+	// 2026-08-21); only /books/{asin} exists.
+	//
+	// The previous version of this test pointed a mock server at any path and
+	// had it return a book array, which "proved" a title search that the real
+	// service has never offered. It passed for years while production logged
+	// "decode search response: unexpected end of JSON input" on every call.
+	// So this test now asserts the contract that matters: with no ASIN, the
+	// client must decline WITHOUT making a request.
+	var hits int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(arrayFixture))
+		hits++
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"message":"Route not found","statusCode":404}`))
 	}))
 	defer srv.Close()
 
 	client := NewAudnexusClient()
 	client.baseURL = srv.URL
 
-	q := metadata.SearchQuery{Title: "Hitchhiker"}
-	results, err := client.Search(context.Background(), q)
+	results, err := client.Search(context.Background(), metadata.SearchQuery{Title: "Hitchhiker"})
 	if err != nil {
-		t.Fatalf("Search error: %v", err)
+		t.Fatalf("declining should not be an error, got: %v", err)
 	}
-	if len(results) == 0 {
-		t.Fatal("expected at least one result")
+	if len(results) != 0 {
+		t.Fatalf("expected no results, got %d", len(results))
 	}
-	if results[0].Title != "The Hitchhiker's Guide to the Galaxy" {
-		t.Errorf("Title = %q", results[0].Title)
+	if hits != 0 {
+		t.Errorf("expected no HTTP request for a title-only query, got %d", hits)
 	}
 }
 
