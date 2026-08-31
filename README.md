@@ -19,7 +19,7 @@ Metadata** to an audiobook library's metadata provider chain.
 
 ```sh
 GOWORK=off go test ./...
-make build
+GOWORK=off make build
 ```
 
 ## Contributing
