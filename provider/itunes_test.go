@@ -90,3 +90,61 @@ func TestITunesCoverArtworkFallback(t *testing.T) {
 		t.Errorf("coverArtwork = %q, want %q", got, want)
 	}
 }
+
+// The host's enrichment sweep resolves an item by calling GetMetadata with the
+// ID that Search accumulated, so a Fetch that returns nothing throws away every
+// iTunes match and the item ends as "no metadata found" (issue #462).
+func TestITunesFetchReturnsMatchForCollectionID(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/itunes_search.json")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/lookup" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("id"); got != "1440742" {
+			t.Errorf("id param = %q, want %q", got, "1440742")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(fixture)
+	}))
+	defer srv.Close()
+
+	client := NewITunesClient()
+	client.baseURL = srv.URL
+
+	match, err := client.Fetch(context.Background(), "1440742")
+	if err != nil {
+		t.Fatalf("Fetch error: %v", err)
+	}
+	if match == nil {
+		t.Fatal("Fetch returned no match")
+	}
+	if match.CoverURL == "" {
+		t.Error("match has no cover URL")
+	}
+	if match.Provider != "itunes" {
+		t.Errorf("Provider = %q, want %q", match.Provider, "itunes")
+	}
+}
+
+func TestITunesFetchUnknownIDReturnsNoMatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"resultCount":0,"results":[]}`))
+	}))
+	defer srv.Close()
+
+	client := NewITunesClient()
+	client.baseURL = srv.URL
+
+	match, err := client.Fetch(context.Background(), "0")
+	if err != nil {
+		t.Fatalf("Fetch error: %v", err)
+	}
+	if match != nil {
+		t.Fatalf("match = %+v, want nil", match)
+	}
+}

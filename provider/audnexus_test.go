@@ -100,33 +100,50 @@ func TestAudnexusSearchByASIN(t *testing.T) {
 	}
 }
 
-func TestAudnexusTitleSearch(t *testing.T) {
-	// The title search endpoint returns an array of books.
-	fixture, err := os.ReadFile("testdata/audnexus_book.json")
-	if err != nil {
-		t.Fatalf("read fixture: %v", err)
-	}
-	arrayFixture := "[" + string(fixture) + "]"
-
+// Audnexus exposes ASIN routes only. A title-only search must not invent a
+// /books?q= request: the API answers that with 404, and the empty body then
+// decoded as "unexpected end of JSON input" on every search (issue #462).
+func TestAudnexusTitleOnlySearchIssuesNoRequest(t *testing.T) {
+	var requests int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(arrayFixture))
+		requests++
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"message":"Route GET:/books not found","statusCode":404}`))
 	}))
 	defer srv.Close()
 
 	client := NewAudnexusClient()
 	client.baseURL = srv.URL
 
-	q := metadata.SearchQuery{Title: "Hitchhiker"}
-	results, err := client.Search(context.Background(), q)
+	results, err := client.Search(context.Background(), metadata.SearchQuery{Title: "Hitchhiker"})
 	if err != nil {
 		t.Fatalf("Search error: %v", err)
 	}
-	if len(results) == 0 {
-		t.Fatal("expected at least one result")
+	if len(results) != 0 {
+		t.Fatalf("results = %d, want 0", len(results))
 	}
-	if results[0].Title != "The Hitchhiker's Guide to the Galaxy" {
-		t.Errorf("Title = %q", results[0].Title)
+	if requests != 0 {
+		t.Fatalf("requests = %d, want 0 (audnexus has no title search)", requests)
+	}
+}
+
+// A 404 from the ASIN route means "no such book", which get() reports as a nil
+// body. Decoding that nil body produced a bogus JSON error instead.
+func TestAudnexusFetchUnknownASINReturnsNoMatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	client := NewAudnexusClient()
+	client.baseURL = srv.URL
+
+	match, err := client.Fetch(context.Background(), "B0000000000")
+	if err != nil {
+		t.Fatalf("Fetch error: %v", err)
+	}
+	if match != nil {
+		t.Fatalf("match = %+v, want nil", match)
 	}
 }
 

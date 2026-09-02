@@ -161,7 +161,6 @@ func NewAudnexusClient() *AudnexusClient {
 // Search returns a Match when q.ProviderIDs["asin"] is set.
 // Audnexus provides no general title search endpoint.
 func (c *AudnexusClient) Search(ctx context.Context, q metadata.SearchQuery) ([]metadata.Match, error) {
-	// Title-based search: use /books?q= endpoint (returns array of books).
 	if asin := q.ProviderIDs["asin"]; asin != "" {
 		m, err := c.Fetch(ctx, asin)
 		if err != nil || m == nil {
@@ -170,43 +169,11 @@ func (c *AudnexusClient) Search(ctx context.Context, q metadata.SearchQuery) ([]
 		return []metadata.Match{*m}, nil
 	}
 
-	// Fall back to title search if a title is provided.
-	if q.Title == "" {
-		return nil, nil
-	}
-
-	if err := waitForLimiter(ctx, c.limiter); err != nil {
-		return nil, err
-	}
-
-	params := url.Values{}
-	params.Set("q", q.Title)
-	params.Set("region", "us")
-	reqURL := c.baseURL + "/books?" + params.Encode()
-
-	body, err := c.get(ctx, reqURL)
-	if err != nil {
-		return nil, err
-	}
-
-	// Response is an array of books.
-	var books []audnexusBook
-	if err := json.Unmarshal(body, &books); err != nil {
-		// Some versions wrap in {"books": [...]}
-		var wrapper struct {
-			Books []audnexusBook `json:"books"`
-		}
-		if err2 := json.Unmarshal(body, &wrapper); err2 != nil {
-			return nil, fmt.Errorf("audnexus: decode search response: %w", err)
-		}
-		books = wrapper.Books
-	}
-
-	results := make([]metadata.Match, 0, len(books))
-	for _, b := range books {
-		results = append(results, bookFromAudnexus(b))
-	}
-	return results, nil
+	// No ASIN, no lookup. Audnexus exposes ASIN-based routes only: the
+	// previous title fallback requested GET /books?q=, which the API answers
+	// with 404, and the empty body then failed to decode as
+	// "unexpected end of JSON input" on every single search.
+	return nil, nil
 }
 
 // Fetch returns full metadata for the given ASIN.
@@ -217,7 +184,9 @@ func (c *AudnexusClient) Fetch(ctx context.Context, asin string) (*metadata.Matc
 
 	reqURL := c.baseURL + "/books/" + url.PathEscape(strings.ToUpper(asin)) + "?region=us"
 	body, err := c.get(ctx, reqURL)
-	if err != nil {
+	if err != nil || body == nil {
+		// get() reports an unknown/delisted ASIN as (nil, nil); decoding that
+		// nil body would surface as a bogus JSON error instead of "no match".
 		return nil, err
 	}
 
